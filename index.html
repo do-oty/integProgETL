@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV to JSON</title>
+
+    <style>
+        body {
+            font-family: "Times New Roman", serif;
+            margin: 2px 2px 20px 2px;
+            color: black;
+            background: white;
+        }
+
+        h1 {
+            font-size: 32px;
+            margin-top: 0;
+            margin-bottom: 20px;
+        }
+
+        h4 {
+            font-size: 18px;
+            font-style: italic;
+            margin-top: 22px;
+            margin-bottom: 78px;
+        }
+
+        h2 {
+            font-size: 30px;
+            margin-bottom: 22px;
+        }
+
+        h3 {
+            font-size: 23px;
+            margin-top: 22px;
+            margin-bottom: 18px;
+        }
+
+        .upload-group {
+            margin-bottom: 16px;
+        }
+
+        .upload-label {
+            font-size: 16px;
+            margin-bottom: 6px;
+        }
+
+        input[type="file"],
+        button {
+            font-family: Arial, sans-serif;
+            font-size: 13px;
+        }
+
+        button {
+            padding: 3px 6px;
+            cursor: pointer;
+            margin-top: 4px;
+            margin-bottom: 18px;
+        }
+
+        .helper-text {
+            font-size: 16px;
+            margin-bottom: 24px;
+        }
+
+        #jsonOutput {
+            font-family: monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            margin-top: 18px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Kyle Christian A. Zenarosa</h1>
+
+    <h4>IT 3206N TTH 3:00 - 5:30 PM</h4>
+
+    <h2>CSV to JSON</h2>
+
+    <h3>1. Upload Source CSV Files</h3>
+
+    <div class="upload-group">
+        <div class="upload-label">Student Information System (SIS):</div>
+        <input type="file" id="sisFile" accept=".csv">
+    </div>
+
+    <div class="upload-group">
+        <div class="upload-label">Learning Management System (LMS):</div>
+        <input type="file" id="lmsFile" accept=".csv">
+    </div>
+
+    <div class="upload-group">
+        <div class="upload-label">Accounting System:</div>
+        <input type="file" id="accountingFile" accept=".csv">
+    </div>
+
+    <div>
+        <button onclick="processETL()">RUN ETL</button>
+    </div>
+
+    <div class="helper-text">Upload the three CSV files and click RUN ETL.</div>
+
+    <h3>6. JSON Output (For integrated students)</h3>
+
+    <pre id="jsonOutput">Upload the CSV files and click RUN ETL.</pre>
+
+    <script>
+        function parseCSV(text) {
+            const rows = [];
+            let row = [];
+            let value = "";
+            let insideQuotes = false;
+
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
+                const next = text[i + 1];
+
+                if (char === '"' && insideQuotes && next === '"') {
+                    value += '"';
+                    i++;
+                } else if (char === '"') {
+                    insideQuotes = !insideQuotes;
+                } else if (char === ',' && !insideQuotes) {
+                    row.push(value);
+                    value = "";
+                } else if ((char === '\n' || char === '\r') && !insideQuotes) {
+                    if (char === '\r' && next === '\n') {
+                        i++;
+                    }
+                    row.push(value);
+                    if (row.some(cell => cell.trim() !== "")) {
+                        rows.push(row);
+                    }
+                    row = [];
+                    value = "";
+                } else {
+                    value += char;
+                }
+            }
+
+            row.push(value);
+            if (row.some(cell => cell.trim() !== "")) {
+                rows.push(row);
+            }
+
+            if (rows.length < 2) return [];
+
+            const headers = rows[0].map(h => h.trim().replace(/^\uFEFF/, "").toLowerCase());
+            return rows.slice(1).map(r => {
+                const record = {};
+                headers.forEach((header, idx) => {
+                    record[header] = (r[idx] !== undefined ? r[idx] : "").trim();
+                });
+                return record;
+            });
+        }
+
+        function readFileAsText(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = e => resolve(e.target.result);
+                reader.onerror = () => reject(new Error("Unable to read " + file.name));
+                reader.readAsText(file);
+            });
+        }
+
+        function toProperCase(str) {
+            if (!str) return "";
+            return str
+                .toLowerCase()
+                .split(/\s+/)
+                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                .join(" ");
+        }
+
+        function getFullProgramName(code) {
+            const programs = {
+                "BSIT": "Bachelor of Science in Information Technology",
+                "BSCS": "Bachelor of Science in Computer Science",
+                "BSIS": "Bachelor of Science in Information Systems",
+                "BSBA": "Bachelor of Science in Business Administration",
+                "BSA": "Bachelor of Science in Accountancy"
+            };
+            const normalized = (code || "").trim().toUpperCase();
+            return programs[normalized] || normalized;
+        }
+
+        function normalizeCompletionStatus(status) {
+            if (!status) return null;
+            const s = status.trim().toLowerCase();
+            return s.charAt(0).toUpperCase() + s.slice(1);
+        }
+
+        async function processETL() {
+            const output = document.getElementById("jsonOutput");
+            const sisFileInput = document.getElementById("sisFile").files[0];
+            const lmsFileInput = document.getElementById("lmsFile").files[0];
+            const accountingFileInput = document.getElementById("accountingFile").files[0];
+
+            if (!sisFileInput || !lmsFileInput || !accountingFileInput) {
+                alert("Please upload all three CSV files first.");
+                return;
+            }
+
+            try {
+                const [sisText, lmsText, accText] = await Promise.all([
+                    readFileAsText(sisFileInput),
+                    readFileAsText(lmsFileInput),
+                    readFileAsText(accountingFileInput)
+                ]);
+
+                const sisData = parseCSV(sisText);
+                const lmsData = parseCSV(lmsText);
+                const accData = parseCSV(accText);
+
+                if (sisData.length === 0) {
+                    output.textContent = "SIS CSV file has no data.";
+                    return;
+                }
+
+                const lmsMap = new Map();
+                lmsData.forEach(item => {
+                    const id = parseInt(item.student_id, 10);
+                    if (!isNaN(id)) lmsMap.set(id, item);
+                });
+
+                const accMap = new Map();
+                accData.forEach(item => {
+                    const id = parseInt(item.student_id, 10);
+                    if (!isNaN(id)) accMap.set(id, item);
+                });
+
+                const integratedResult = sisData.map(sisRow => {
+                    const id = parseInt(sisRow.student_id, 10);
+                    const lmsRow = lmsMap.get(id) || null;
+                    const accRow = accMap.get(id) || null;
+
+                    let courseCode = null;
+                    let finalGrade = null;
+                    let completionStatus = null;
+
+                    if (lmsRow) {
+                        courseCode = lmsRow.course_code ? lmsRow.course_code.toUpperCase() : null;
+                        
+                        if (lmsRow.final_grade !== undefined && lmsRow.final_grade !== "") {
+                            const numericGrade = Number(lmsRow.final_grade);
+                            finalGrade = !isNaN(numericGrade) ? numericGrade : lmsRow.final_grade.trim().toUpperCase();
+                        }
+
+                        completionStatus = normalizeCompletionStatus(lmsRow.completion_status);
+                    }
+
+                    let outstandingBalance = null;
+                    let currency = null;
+
+                    if (accRow) {
+                        if (accRow.account_balance !== undefined && accRow.account_balance !== "") {
+                            const parsedBalance = parseFloat(accRow.account_balance.replace(/,/g, ""));
+                            outstandingBalance = !isNaN(parsedBalance) ? Number(parsedBalance.toFixed(2)) : null;
+                        }
+                        currency = accRow.currency ? accRow.currency.toUpperCase() : null;
+                    }
+
+                    return {
+                        studentId: !isNaN(id) ? id : sisRow.student_id,
+                        studentName: toProperCase(sisRow.student_name),
+                        program: getFullProgramName(sisRow.program_code),
+                        emailAddress: (sisRow.email || "").toLowerCase(),
+                        courseCode: courseCode,
+                        finalGrade: finalGrade,
+                        completionStatus: completionStatus,
+                        outstandingBalance: outstandingBalance,
+                        currency: currency
+                    };
+                });
+
+                output.textContent = JSON.stringify(integratedResult, null, 2);
+
+            } catch (err) {
+                output.textContent = "Error: " + err.message;
+            }
+        }
+    </script>
+
+</body>
+</html>
